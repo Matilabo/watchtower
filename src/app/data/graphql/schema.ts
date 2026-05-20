@@ -1,0 +1,242 @@
+/**
+ * The SDL, inlined so it can be bundled for the browser without a loader.
+ *
+ * `schema.graphql` is the readable, tool-friendly copy and remains the
+ * source of truth; `schema.spec.ts` fails if the two ever drift apart.
+ */
+
+export const WATCHTOWER_SCHEMA_SDL = `"""
+Watchtower's own API.
+
+This layer owns everything the *user* creates: what they watch, what has been
+alerted on, and what they decided about it. It is deliberately not where
+certificate transparency data comes from -- see the README for why the two
+sources are split, but in short: CT is a firehose of immutable public records
+best pulled as-is over REST, while this is a small, highly relational, mutable
+graph where one round trip should be able to fetch an alert, its certificate,
+its score breakdown and its triage history together.
+"""
+
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  "Everything the user is watching, oldest first."
+  watchlist: [WatchlistEntry!]!
+
+  """
+  Alert history. \`state\` and \`minScore\` filter server-side so a long history
+  does not have to cross the wire to be counted.
+  """
+  alerts(state: TriageState, minScore: Int, watchEntryId: ID): [Alert!]!
+
+  "A single alert, for the detail view and for deep links."
+  alert(id: ID!): Alert
+
+  "Counts for the summary bar, computed server-side."
+  alertSummary: AlertSummary!
+}
+
+type Mutation {
+  "Adds a domain to the watchlist. Fails if the domain is invalid or duplicated."
+  addWatchlistEntry(input: AddWatchlistEntryInput!): WatchlistEntryResult!
+
+  "Removes an entry. Its alerts are kept: history should outlive the watch."
+  removeWatchlistEntry(id: ID!): Boolean!
+
+  """
+  Records alerts produced by a polling cycle.
+
+  Idempotent by alert id: a certificate that keeps showing up in the CT query
+  window updates \`lastSeenAt\` and leaves the analyst's triage state alone.
+  """
+  recordAlerts(input: [RecordAlertInput!]!): RecordAlertsResult!
+
+  "Sets the triage state of an alert and appends to its audit trail."
+  setTriageState(input: SetTriageStateInput!): AlertResult!
+}
+
+"A domain the user wants to be told about impersonations of."
+type WatchlistEntry {
+  id: ID!
+  "The domain as the user typed it."
+  domain: String!
+  "Canonical A-label form, used for matching."
+  canonicalDomain: String!
+  label: String
+  createdAt: String!
+  "How many alerts this entry has produced."
+  alertCount: Int!
+}
+
+"Where an alert sits in the analyst's workflow."
+enum TriageState {
+  NEW
+  INVESTIGATING
+  BENIGN
+  MALICIOUS
+}
+
+"A certificate as observed in a transparency log."
+type Certificate {
+  id: ID!
+  "Subject CN plus every SAN, in the A-label form the log stores."
+  names: [String!]!
+  commonName: String!
+  issuer: String!
+  loggedAt: String!
+  notBefore: String!
+  notAfter: String!
+  serialNumber: String!
+  "Which log or fixture produced this record."
+  source: String!
+}
+
+"""
+One rule that fired, and what it contributed.
+
+\`contribution\` values across an assessment sum to exactly \`score\`, so a client
+can render a breakdown that adds up rather than a list of unrelated numbers.
+"""
+type RuleHit {
+  rule: String!
+  "base | modifier | suppressor"
+  kind: String!
+  title: String!
+  "The specific evidence: which characters, which position, which distance."
+  detail: String!
+  "Standalone strength of this signal, independent of the others."
+  weight: Int!
+  contribution: Int!
+}
+
+type Assessment {
+  candidate: String!
+  candidateAscii: String!
+  candidateUnicode: String!
+  watched: String!
+  "The candidate label that actually matched, e.g. \`n0rthwindbank\`."
+  matchedLabel: String
+  score: Int!
+  "none | low | medium | high | critical"
+  level: String!
+  hits: [RuleHit!]!
+  "True when this is one of the user's own certificates."
+  benign: Boolean!
+  summary: String!
+}
+
+type TriageEvent {
+  state: TriageState!
+  at: String!
+  note: String!
+}
+
+type Alert {
+  id: ID!
+  certificate: Certificate!
+  watchEntryId: ID!
+  watchedDomain: String!
+  assessment: Assessment!
+  triage: TriageState!
+  "Append-only audit trail; the first entry is always the initial sighting."
+  history: [TriageEvent!]!
+  firstSeenAt: String!
+  lastSeenAt: String!
+}
+
+type AlertSummary {
+  total: Int!
+  new: Int!
+  investigating: Int!
+  benign: Int!
+  malicious: Int!
+  "Alerts at level \`high\` or \`critical\` that nobody has resolved yet."
+  unresolvedHighRisk: Int!
+}
+
+"""
+A mutation result that can carry a user-facing failure.
+
+Invalid input is an expected outcome here, not an exception: \`addWatchlistEntry\`
+with a typo should render a message next to the field, so it travels as data
+rather than as a GraphQL error.
+"""
+type WatchlistEntryResult {
+  entry: WatchlistEntry
+  error: UserError
+}
+
+type AlertResult {
+  alert: Alert
+  error: UserError
+}
+
+type RecordAlertsResult {
+  "Alerts that were new in this cycle. Drives the live region announcement."
+  created: [Alert!]!
+  "Alerts already known, refreshed in place with triage state preserved."
+  updated: [Alert!]!
+  error: UserError
+}
+
+type UserError {
+  message: String!
+  "Which input field the message belongs to, when it belongs to one."
+  field: String
+}
+
+input AddWatchlistEntryInput {
+  domain: String!
+  label: String
+}
+
+input RecordAlertInput {
+  certificate: CertificateInput!
+  watchEntryId: ID!
+  assessment: AssessmentInput!
+  observedAt: String!
+}
+
+input CertificateInput {
+  id: ID!
+  names: [String!]!
+  commonName: String!
+  issuer: String!
+  loggedAt: String!
+  notBefore: String!
+  notAfter: String!
+  serialNumber: String!
+  source: String!
+}
+
+input RuleHitInput {
+  rule: String!
+  kind: String!
+  title: String!
+  detail: String!
+  weight: Int!
+  contribution: Int!
+}
+
+input AssessmentInput {
+  candidate: String!
+  candidateAscii: String!
+  candidateUnicode: String!
+  watched: String!
+  matchedLabel: String
+  score: Int!
+  level: String!
+  hits: [RuleHitInput!]!
+  benign: Boolean!
+  summary: String!
+}
+
+input SetTriageStateInput {
+  alertId: ID!
+  state: TriageState!
+  note: String
+}
+`;
