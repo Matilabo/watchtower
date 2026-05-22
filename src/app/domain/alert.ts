@@ -128,6 +128,31 @@ export function compareAlerts(a: Alert, b: Alert): number {
   );
 }
 
+/**
+ * Applies fresh alert data without disturbing the order on screen.
+ *
+ * `compareAlerts` sorts resolved alerts to the bottom, which is right when the
+ * list is built but hostile when it is applied to a list somebody is reading:
+ * marking row 3 benign would make rows 4 through 12 jump up by one. So when the
+ * set of alerts is unchanged and only their contents differ, the order the user
+ * is looking at wins. A genuinely different set falls back to the ranked order.
+ */
+export function preserveOrder(
+  current: readonly Alert[],
+  next: readonly Alert[],
+): readonly Alert[] {
+  if (current.length !== next.length) return next;
+
+  const byId = new Map(next.map((alert) => [alert.id, alert]));
+  const reordered: Alert[] = [];
+  for (const alert of current) {
+    const updated = byId.get(alert.id);
+    if (updated === undefined) return next;
+    reordered.push(updated);
+  }
+  return reordered;
+}
+
 /** True once an analyst has reached a verdict, for the "N open" counter. */
 export function isResolved(alert: Alert): boolean {
   return alert.triage === 'benign' || alert.triage === 'malicious';

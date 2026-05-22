@@ -6,6 +6,7 @@ import {
   compareAlerts,
   isResolved,
   mergeAlert,
+  preserveOrder,
   type Alert,
 } from './alert';
 import { certificateKey, normaliseNames, type CertificateRecord } from './certificate';
@@ -197,5 +198,38 @@ describe('isResolved', () => {
     ['malicious', true],
   ] as const)('%s is resolved: %s', (state, expected) => {
     expect(isResolved(applyTriage(alert(), state, LATER))).toBe(expected);
+  });
+});
+
+describe('preserveOrder', () => {
+  const withId = (id: string, triage: Alert['triage'] = 'new'): Alert => ({
+    ...alert({ id }),
+    triage,
+  });
+
+  it('keeps the order on screen when only contents changed', () => {
+    const current = [withId('a'), withId('b'), withId('c')];
+    const next = [withId('c', 'benign'), withId('a'), withId('b')];
+
+    const result = preserveOrder(current, next);
+    expect(result.map((entry) => entry.id)).toEqual(['a', 'b', 'c']);
+    // The contents are the new ones, only the order is the old one.
+    expect(result[2]?.triage).toBe('benign');
+  });
+
+  it('takes the ranked order when an alert is added', () => {
+    const current = [withId('a')];
+    const next = [withId('b'), withId('a')];
+    expect(preserveOrder(current, next).map((entry) => entry.id)).toEqual(['b', 'a']);
+  });
+
+  it('takes the ranked order when the set changes without changing size', () => {
+    const current = [withId('a'), withId('b')];
+    const next = [withId('a'), withId('c')];
+    expect(preserveOrder(current, next).map((entry) => entry.id)).toEqual(['a', 'c']);
+  });
+
+  it('handles empty lists', () => {
+    expect(preserveOrder([], [])).toEqual([]);
   });
 });

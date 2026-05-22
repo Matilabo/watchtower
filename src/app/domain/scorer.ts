@@ -482,13 +482,19 @@ export function assess(
   }
 
   // `paypall` both doubles a character and contains `paypal`. That is one piece
-  // of evidence, not two, so combosquatting only counts when it points at a
-  // different label than the structural rules did.
+  // of evidence, not two, so combosquatting is dropped when a character-level
+  // rule already explained the same label. It is *not* dropped when the only
+  // other hit is the generic distance rule: `gоvertexhealth` containing the
+  // whole watched name is the stronger and more specific finding of the two.
+  const characterLevel = bestHits.some((hit) => SUPPRESSES_GENERIC_DISTANCE.has(hit.rule));
   const combo = combosquatHits(candidate, watchedCore).filter(
-    (hit) => bestHits.length === 0 || hit.label !== bestLabel,
+    (hit) => !(characterLevel && hit.label === bestLabel),
   );
+
   const structural = [...bestHits, ...combo];
-  const hasSpecific = structural.some((hit) => SUPPRESSES_GENERIC_DISTANCE.has(hit.rule));
+  const hasSpecific = structural.some(
+    (hit) => SUPPRESSES_GENERIC_DISTANCE.has(hit.rule) || hit.rule === 'combosquat',
+  );
   const baseHits = hasSpecific
     ? structural.filter((hit) => hit.rule !== 'levenshtein-near')
     : structural;
