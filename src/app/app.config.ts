@@ -42,15 +42,23 @@ export const GRAPHQL_CLIENT = new InjectionToken<GraphQLClient>('GRAPHQL_CLIENT'
  * a third-party service just because someone opened it.
  */
 function readConfig(): WatchtowerConfig {
-  let liveSource = false;
+  let params: URLSearchParams;
   try {
-    liveSource = new URLSearchParams(globalThis.location?.search ?? '').get('live') === '1';
+    params = new URLSearchParams(globalThis.location?.search ?? '');
   } catch {
-    liveSource = false;
+    params = new URLSearchParams();
   }
 
+  const liveSource = params.get('live') === '1';
+
+  // `?poll=` shortens the cycle for demos and for the end-to-end suite, which
+  // would otherwise spend most of its time waiting. Floored at one second so
+  // it cannot be turned into a way to hammer crt.sh.
+  const requested = Number.parseInt(params.get('poll') ?? '', 10);
+  const override = Number.isFinite(requested) ? Math.max(requested, 1_000) : null;
+
   return {
-    pollIntervalMs: liveSource ? 120_000 : 15_000,
+    pollIntervalMs: override ?? (liveSource ? 120_000 : 15_000),
     minScore: 20,
     liveSource,
   };
