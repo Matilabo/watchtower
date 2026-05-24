@@ -69,9 +69,10 @@ export function createCtSource(config: WatchtowerConfig): CtSource {
     return new CrtShClient({ timeoutMs: 8_000, maxRetries: 3 });
   }
 
-  // A little latency and an occasional failure, so loading states, the retry
-  // path and the stale banner are all visible while developing.
-  return new FixtureCtSource({ latencyMs: 320, failEvery: 11 });
+  // A little latency, an occasional slow query, and a full outage every ninth
+  // cycle, so loading, partial, error and stale states are all visible offline
+  // without any of them dominating the demo.
+  return new FixtureCtSource({ latencyMs: 320, failEvery: 17, failCycleEvery: 9 });
 }
 
 export function createGraphQLClient(): GraphQLClient {

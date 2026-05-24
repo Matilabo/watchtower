@@ -75,6 +75,56 @@ describe('FixtureCtSource', () => {
   it('identifies itself so the UI can label offline data', () => {
     expect(new FixtureCtSource(instant).name).toBe('Offline fixtures');
   });
+
+  describe('fault injection', () => {
+    it('fails one query in N, not the whole cycle', async () => {
+      const source = new FixtureCtSource({ ...instant, failEvery: 3 });
+      const results = await Promise.allSettled(
+        Array.from({ length: 9 }, () => source.fetchCertificates(QUERY)),
+      );
+
+      const failed = results.filter((result) => result.status === 'rejected');
+      expect(failed).toHaveLength(3);
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(6);
+    });
+
+    it('counts requests without racing when a cycle runs its queries in parallel', async () => {
+      // Regression: the counter used to be read *after* the simulated latency,
+      // so every parallel query in a cycle saw the same value and the cycle
+      // failed all-or-nothing. A partial cycle must stay partial.
+      const source = new FixtureCtSource({ ...instant, latencyMs: 5, failEvery: 4 });
+      const settled = await Promise.allSettled(
+        Array.from({ length: 8 }, () => source.fetchCertificates(QUERY)),
+      );
+
+      const failures = settled.filter((result) => result.status === 'rejected').length;
+      expect(failures).toBe(2);
+      expect(failures).toBeLessThan(8);
+    });
+
+    it('fails an entire cycle only when asked to', async () => {
+      const source = new FixtureCtSource({ ...instant, failCycleEvery: 2 });
+
+      source.advance();
+      await expect(source.fetchCertificates(QUERY)).resolves.toBeInstanceOf(Array);
+
+      source.advance();
+      const settled = await Promise.allSettled([
+        source.fetchCertificates(QUERY),
+        source.fetchCertificates(QUERY),
+        source.fetchCertificates(QUERY),
+      ]);
+      expect(settled.every((result) => result.status === 'rejected')).toBe(true);
+      expect((settled[0] as PromiseRejectedResult).reason).toMatchObject({ kind: 'timeout' });
+    });
+
+    it('injects nothing by default', async () => {
+      const source = new FixtureCtSource(instant);
+      for (let i = 0; i < 25; i++) {
+        await expect(source.fetchCertificates(QUERY)).resolves.toBeInstanceOf(Array);
+      }
+    });
+  });
 });
 
 describe('seed data', () => {

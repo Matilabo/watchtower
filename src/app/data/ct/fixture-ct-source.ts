@@ -27,10 +27,16 @@ export interface FixtureCtSourceOptions {
   /** Simulated round-trip time, so loading states are visible. */
   readonly latencyMs?: number;
   /**
-   * Fail every Nth request (0 disables). The default exercises the retry and
-   * staleness paths without making the demo unusable.
+   * Fail every Nth individual query (0 disables). One query failing while the
+   * others succeed is the *partial* cycle path.
    */
   readonly failEvery?: number;
+  /**
+   * Fail every Nth cycle outright (0 disables): every query in it rejects.
+   * This is the path that produces an error frame, the stale banner and the
+   * automatic-retry copy, so the offline demo can show them.
+   */
+  readonly failCycleEvery?: number;
   /** Fixed clock for deterministic runs (Playwright passes one). */
   readonly now?: () => number;
   readonly sleepImpl?: (ms: number) => Promise<void>;
@@ -58,6 +64,7 @@ export class FixtureCtSource implements CtSource {
   private readonly mode: 'firehose' | 'query';
   private readonly latencyMs: number;
   private readonly failEvery: number;
+  private readonly failCycleEvery: number;
   private readonly now: () => number;
   private readonly sleepImpl: (ms: number) => Promise<void>;
 
@@ -69,6 +76,7 @@ export class FixtureCtSource implements CtSource {
     this.mode = options.mode ?? 'firehose';
     this.latencyMs = options.latencyMs ?? 250;
     this.failEvery = options.failEvery ?? 0;
+    this.failCycleEvery = options.failCycleEvery ?? 0;
     this.now = options.now ?? Date.now;
     this.sleepImpl =
       options.sleepImpl ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
@@ -83,7 +91,12 @@ export class FixtureCtSource implements CtSource {
   }
 
   async fetchCertificates(query: CtQuery, signal?: AbortSignal): Promise<CertificateRecord[]> {
-    this.requestCount++;
+    // Claim this request's number *before* awaiting. The poller runs a cycle's
+    // queries in parallel, so reading the shared counter after the await gave
+    // every query in the cycle the same value: instead of one request in N
+    // failing, either all of them failed or none did, which turned a partial
+    // cycle into a total outage several times a minute.
+    const requestNumber = ++this.requestCount;
 
     if (this.latencyMs > 0) await this.sleepImpl(this.latencyMs);
 
@@ -91,8 +104,17 @@ export class FixtureCtSource implements CtSource {
       throw new CtSourceError('aborted', 'Certificate fetch was cancelled');
     }
 
-    if (this.failEvery > 0 && this.requestCount % this.failEvery === 0) {
-      throw new CtSourceError('timeout', 'Simulated offline-source timeout', {
+    // A whole cycle failing is worth demonstrating too -- it is what drives the
+    // stale banner and the retry copy -- but it should happen because the
+    // fixture was asked to do it, not as a side effect of a race.
+    if (this.failCycleEvery > 0 && this.pollCount > 0 && this.pollCount % this.failCycleEvery === 0) {
+      throw new CtSourceError('timeout', 'Simulated feed outage (fixture fault injection)', {
+        attempts: 1,
+      });
+    }
+
+    if (this.failEvery > 0 && requestNumber % this.failEvery === 0) {
+      throw new CtSourceError('timeout', 'Simulated slow query (fixture fault injection)', {
         attempts: 1,
       });
     }

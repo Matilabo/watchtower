@@ -24,7 +24,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { Subject, map } from 'rxjs';
+import { Subject, distinctUntilChanged, map } from 'rxjs';
 
 import { CT_SOURCE, GRAPHQL_CLIENT, WATCHTOWER_CONFIG } from '../app.config';
 import { buildAlertRequests } from '../data/alert-pipeline';
@@ -217,6 +217,19 @@ export class WatchtowerStore {
           const core = tryParseDomain(entry.domain)?.core ?? '';
           return core.length === 0 ? [] : queriesForDomain(entry.id, core);
         }),
+      ),
+      // Reloading the watchlist after a poll hands back an equal-but-new array,
+      // and a query set is only *different* if the queries differ. Without this
+      // the stream sees a change, polls again, reloads the watchlist, and the
+      // app polls in a tight loop instead of on its interval.
+      distinctUntilChanged(
+        (a, b) =>
+          a.length === b.length &&
+          a.every(
+            (query, index) =>
+              query.identity === b[index]?.identity &&
+              query.watchEntryId === b[index]?.watchEntryId,
+          ),
       ),
     );
 
