@@ -349,4 +349,100 @@ describe('createCertificateStream', () => {
 
     expect(source.calls).toHaveLength(callsWhileSubscribed);
   });
+describe('the automatic retry cap', () => {
+    const failing = (): Promise<CertificateRecord[]> =>
+      Promise.reject(new CtSourceError('timeout', 'crt.sh did not respond in time'));
+
+    it('stops polling after five consecutive failures', async () => {
+      source.script(...Array.from({ length: 12 }, () => failing));
+      start();
+
+      for (let cycle = 0; cycle < 5; cycle++) await tick(cycle === 0 ? 0 : INTERVAL);
+      expect(source.calls).toHaveLength(5);
+      expect(frames.at(-1)).toMatchObject({ consecutiveFailures: 5, autoRetryPaused: true });
+
+      // Further ticks are ignored: the feed is broken and saying so once is enough.
+      await tick(INTERVAL * 5);
+      expect(source.calls).toHaveLength(5);
+    });
+
+    it('counts down towards the cap so the UI can say which attempt this is', async () => {
+      source.script(...Array.from({ length: 4 }, () => failing));
+      start();
+      await tick(0);
+      expect(frames.at(-1)).toMatchObject({ consecutiveFailures: 1, autoRetryPaused: false });
+
+      await tick(INTERVAL);
+      expect(frames.at(-1)).toMatchObject({ consecutiveFailures: 2, autoRetryPaused: false });
+    });
+
+    it('resets the count when a cycle succeeds', async () => {
+      source.script(failing, failing, () => Promise.resolve([certificate('1')]), failing);
+      start();
+      await tick(0);
+      await tick(INTERVAL);
+      await tick(INTERVAL);
+
+      expect(frames.at(-1)).toMatchObject({ consecutiveFailures: 0, autoRetryPaused: false });
+
+      await tick(INTERVAL);
+      expect(frames.at(-1)?.consecutiveFailures).toBe(1);
+    });
+
+    it('resumes when the user asks for a refresh', async () => {
+      const refresh$ = new Subject<void>();
+      source.script(...Array.from({ length: 8 }, () => failing));
+      start({ refresh$ });
+
+      for (let cycle = 0; cycle < 5; cycle++) await tick(cycle === 0 ? 0 : INTERVAL);
+      expect(frames.at(-1)?.autoRetryPaused).toBe(true);
+
+      refresh$.next();
+      await tick(0);
+      expect(source.calls).toHaveLength(6);
+      // One failure again, not six: asking by hand starts the count over.
+      expect(frames.at(-1)).toMatchObject({ consecutiveFailures: 1, autoRetryPaused: false });
+
+      // And the interval is live again.
+      await tick(INTERVAL);
+      expect(source.calls).toHaveLength(7);
+    });
+
+    it('resumes when the watchlist changes', async () => {
+      source.script(...Array.from({ length: 8 }, () => failing));
+      start();
+      for (let cycle = 0; cycle < 5; cycle++) await tick(cycle === 0 ? 0 : INTERVAL);
+      expect(frames.at(-1)?.autoRetryPaused).toBe(true);
+
+      queries$.next([{ identity: '%new%', watchEntryId: 'watch-2' }]);
+      await tick(0);
+      expect(source.calls).toHaveLength(6);
+      expect(frames.at(-1)?.autoRetryPaused).toBe(false);
+    });
+
+    it('can be told not to give up', async () => {
+      source.script(...Array.from({ length: 10 }, () => failing));
+      start({ maxConsecutiveFailures: 0 });
+
+      for (let cycle = 0; cycle < 7; cycle++) await tick(cycle === 0 ? 0 : INTERVAL);
+      expect(source.calls).toHaveLength(7);
+      expect(frames.at(-1)?.autoRetryPaused).toBe(false);
+    });
+
+    it('does not poll faster than its interval when the query list is re-emitted equal', async () => {
+      source.script(
+        () => Promise.resolve([certificate('1')]),
+        () => Promise.resolve([certificate('1')]),
+      );
+      start();
+      await tick(0);
+      expect(source.calls).toHaveLength(1);
+
+      // An equal-but-new array is what a watchlist reload produces. The store
+      // de-duplicates it; if it ever stops, this is the symptom to look for.
+      queries$.next([...QUERIES]);
+      await tick(0);
+      expect(source.calls).toHaveLength(2);
+    });
+  });
 });

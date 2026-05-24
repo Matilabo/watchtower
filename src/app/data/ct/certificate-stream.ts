@@ -35,6 +35,7 @@ import {
   scan,
   shareReplay,
   switchMap,
+  tap,
 } from 'rxjs/operators';
 
 import type { CertificateRecord } from '../../domain/certificate';
@@ -65,6 +66,17 @@ export interface PollFrame {
   /** Some queries failed but others succeeded: the set may be incomplete. */
   readonly partial: boolean;
   readonly sourceName: string;
+  /** Failed cycles since the last success. Reset by any successful poll. */
+  readonly consecutiveFailures: number;
+  /**
+   * Automatic polling has given up and is waiting to be asked again.
+   *
+   * Retrying a broken feed forever is how a client keeps a struggling service
+   * down and burns the user's battery describing a problem it cannot fix, so
+   * after a handful of consecutive failures the loop stops and hands the
+   * decision back. A manual refresh or a watchlist change resumes it.
+   */
+  readonly autoRetryPaused: boolean;
 }
 
 export interface CertificateStreamOptions {
@@ -76,6 +88,11 @@ export interface CertificateStreamOptions {
   readonly refresh$?: Observable<unknown>;
   readonly now?: () => number;
   readonly backoff?: BackoffOptions;
+  /**
+   * Consecutive failed cycles before automatic polling stops and waits for the
+   * user. 0 disables the cap and retries forever.
+   */
+  readonly maxConsecutiveFailures?: number;
   /** Called once per cycle before any request; the fixture source uses it. */
   readonly onCycleStart?: () => void;
   /** Injected in tests to drive `timer` deterministically. */
@@ -83,6 +100,16 @@ export interface CertificateStreamOptions {
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
+
+/**
+ * Failed cycles before automatic polling stands down.
+ *
+ * Five is enough to ride out a restart or a blip -- with jittered backoff that
+ * is a couple of minutes of trying -- and few enough that a genuinely broken
+ * feed stops burning requests and hands the decision back to the person who
+ * can actually do something about it.
+ */
+export const MAX_AUTO_RETRIES = 5;
 
 interface FetchOutcome {
   readonly certificates: readonly CertificateRecord[];
@@ -154,7 +181,12 @@ async function fetchAll(
 type CycleEvent =
   | { readonly type: 'loading' }
   | { readonly type: 'result'; readonly outcome: FetchOutcome }
-  | { readonly type: 'error'; readonly error: PollError };
+  | {
+      readonly type: 'error';
+      readonly error: PollError;
+      readonly consecutiveFailures: number;
+      readonly autoRetryPaused: boolean;
+    };
 
 interface StreamState {
   readonly frame: PollFrame;
@@ -190,6 +222,8 @@ function reduce(state: StreamState, event: CycleEvent, now: () => number): Strea
           status: 'error',
           newCertificates: [],
           error: event.error,
+          consecutiveFailures: event.consecutiveFailures,
+          autoRetryPaused: event.autoRetryPaused,
           polledAt,
         },
       };
@@ -221,6 +255,8 @@ function reduce(state: StreamState, event: CycleEvent, now: () => number): Strea
           error: null,
           partial: event.outcome.partial,
           sourceName: state.frame.sourceName,
+          consecutiveFailures: 0,
+          autoRetryPaused: false,
         },
       };
     }
@@ -245,7 +281,25 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
     backoff = DEFAULT_BACKOFF,
     onCycleStart,
     scheduler,
+    maxConsecutiveFailures = MAX_AUTO_RETRIES,
   } = options;
+
+  // Whether the interval is still allowed to fire. Kept as closure state
+  // rather than a signal or a Subject because nothing outside this stream may
+  // write it: it is decided entirely by the outcomes flowing through here.
+  const control = { consecutiveFailures: 0, paused: false };
+
+  const resume = (): void => {
+    control.consecutiveFailures = 0;
+    control.paused = false;
+  };
+
+  const registerFailure = (): void => {
+    control.consecutiveFailures += 1;
+    if (maxConsecutiveFailures > 0 && control.consecutiveFailures >= maxConsecutiveFailures) {
+      control.paused = true;
+    }
+  };
 
   const initial: StreamState = {
     seen: new Set<string>(),
@@ -259,15 +313,25 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
       error: null,
       partial: false,
       sourceName: source.name,
+      consecutiveFailures: 0,
+      autoRetryPaused: false,
     },
   };
 
-  const ticks$ = scheduler ? timer(0, intervalMs, scheduler) : timer(0, intervalMs);
-  const triggers$ = refresh$ === undefined ? ticks$ : merge(ticks$, refresh$);
+  const ticks$ = (scheduler ? timer(0, intervalMs, scheduler) : timer(0, intervalMs)).pipe(
+    filter(() => !control.paused),
+  );
 
-  // combineLatest, not withLatestFrom: a watchlist change should start a cycle
-  // immediately rather than waiting up to a full interval for the next tick.
-  const cycles$ = combineLatest([queries$, triggers$]).pipe(map(([queries]) => queries));
+  // Asking for data by hand is also an instruction to start trying again.
+  const manual$ = refresh$ === undefined ? undefined : refresh$.pipe(tap(resume));
+  const triggers$ = manual$ === undefined ? ticks$ : merge(ticks$, manual$);
+
+  // Changing the watchlist is user intent too, and it must start a cycle
+  // immediately rather than waiting up to a full interval -- hence
+  // combineLatest rather than withLatestFrom.
+  const cycles$ = combineLatest([queries$.pipe(tap(resume)), triggers$]).pipe(
+    map(([queries]) => queries),
+  );
 
   const frames$ = cycles$.pipe(
     switchMap((queries) =>
@@ -277,10 +341,17 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
           onCycleStart?.();
           return fromAbortable((signal) => fetchAll(source, queries, signal));
         }).pipe(
+          tap(resume),
           map((outcome): CycleEvent => ({ type: 'result', outcome })),
-          catchError((error: unknown) =>
-            of<CycleEvent>({ type: 'error', error: toPollError(error) }),
-          ),
+          catchError((error: unknown) => {
+            registerFailure();
+            return of<CycleEvent>({
+              type: 'error',
+              error: toPollError(error),
+              consecutiveFailures: control.consecutiveFailures,
+              autoRetryPaused: control.paused,
+            });
+          }),
         ),
       ),
     ),
@@ -295,6 +366,8 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
         b.newCertificates.length === 0 &&
         a.partial === b.partial &&
         a.error?.message === b.error?.message &&
+        a.autoRetryPaused === b.autoRetryPaused &&
+        a.consecutiveFailures === b.consecutiveFailures &&
         a.lastSuccessAt === b.lastSuccessAt,
     ),
     // Last-resort guard: an unexpected error must not end polling for the

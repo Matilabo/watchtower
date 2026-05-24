@@ -11,7 +11,7 @@
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
-import type { PollFrame } from '../data/ct/certificate-stream';
+import { MAX_AUTO_RETRIES, type PollFrame } from '../data/ct/certificate-stream';
 import type { Freshness } from '../data/ct/staleness';
 
 @Component({
@@ -37,8 +37,15 @@ import type { Freshness } from '../data/ct/staleness';
         }
       </span>
 
-      <button type="button" class="wt-quiet refresh" [disabled]="polling()" (click)="refresh.emit()">
-        {{ polling() ? 'Checking…' : 'Check now' }}
+      <button
+        type="button"
+        class="refresh"
+        [class.wt-quiet]="!paused()"
+        [class.wt-primary]="paused()"
+        [disabled]="polling()"
+        (click)="refresh.emit()"
+      >
+        {{ buttonLabel() }}
       </button>
     </div>
 
@@ -134,6 +141,12 @@ export class FeedStatusComponent {
   readonly refresh = output<void>();
 
   protected readonly polling = computed(() => this.frame()?.status === 'loading');
+  protected readonly paused = computed(() => this.frame()?.autoRetryPaused === true);
+
+  protected readonly buttonLabel = computed(() => {
+    if (this.polling()) return 'Checking…';
+    return this.paused() ? 'Try again' : 'Check now';
+  });
 
   protected readonly indicatorState = computed(() => {
     const frame = this.frame();
@@ -151,7 +164,14 @@ export class FeedStatusComponent {
     if (frame.status === 'error' && frame.error !== null) {
       const attempts =
         frame.error.attempts > 1 ? ` after ${frame.error.attempts} attempts` : '';
-      return `${frame.error.message}${attempts}. Showing the last results that came back; retrying automatically.`;
+      const base = `${frame.error.message}${attempts}. Showing the last results that came back`;
+
+      // Say which it is: still trying, or waiting for you. "Retrying
+      // automatically" while nothing is being retried is the kind of small lie
+      // that makes people stop believing the rest of the status bar.
+      return frame.autoRetryPaused
+        ? `${base}. Automatic checks stopped after ${frame.consecutiveFailures} failed attempts — choose “Try again” to resume.`
+        : `${base}; retrying automatically (attempt ${frame.consecutiveFailures} of ${MAX_AUTO_RETRIES}).`;
     }
 
     if (this.freshness().stale) {
