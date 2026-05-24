@@ -44,7 +44,6 @@ const DETAIL_PANEL_ID = 'alert-detail';
     <div class="page">
       <header class="masthead">
         <div class="brand">
-          <span class="mark" aria-hidden="true">⌖</span>
           <div>
             <h1>Watchtower</h1>
             <p class="tagline">
@@ -91,7 +90,8 @@ const DETAIL_PANEL_ID = 'alert-detail';
       @if (!store.isLiveSource) {
         <p class="banner banner--info">
           Running on bundled fixtures, so this works with no network and no API keys.
-          Add <code>?live=1</code> to the URL to poll crt.sh instead.
+          They inject an occasional timeout on purpose, so the retry and stale-data
+          states stay visible offline. Add <code>?live=1</code> to poll crt.sh instead.
         </p>
       }
 
@@ -193,13 +193,6 @@ const DETAIL_PANEL_ID = 'alert-detail';
         display: flex;
         align-items: center;
         gap: 0.85rem;
-      }
-
-      .mark {
-        font-size: 2.25rem;
-        line-height: 1;
-        color: var(--wt-accent);
-        text-shadow: 0 0 22px color-mix(in srgb, var(--wt-accent) 55%, transparent);
       }
 
       h1 {

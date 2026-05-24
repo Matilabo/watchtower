@@ -271,6 +271,13 @@ crt.sh 502'd once is useless, so the last good certificates stay on screen, the
 error is described in the status bar, and `lastSuccessAt` stops advancing — which
 is what makes the staleness indicator honest.
 
+Automatic retries are capped at **five consecutive failures**. Past that the
+interval stands down and the status bar says so, because hammering a feed that
+is genuinely down helps nobody and "retrying automatically" is a lie once you
+have decided to stop. A manual *Try again*, or any watchlist change, resumes it
+and resets the count. Partial cycles — some queries failed, others returned —
+are not failures: they are reported as incomplete and the data is kept.
+
 "Only genuinely new certificates emit" is implemented by keeping the
 `certificates` array *identity* across unchanged polls (so bound views do not
 re-render) and exposing `newCertificates$` separately for the live region.
@@ -303,8 +310,12 @@ not be disrupted when new certificates arrive.**
   toggle, landmarks, and a skip link.
 - **Contrast is a test.** [`palette.spec.ts`](src/app/ui/palette.spec.ts) reads
   the real stylesheet and fails the build if any token pair drops below WCAG AA.
-  The background photograph is decorative and sits over a solid colour and a
-  gradient, so nothing is ever measured against the image.
+  The background photograph is decorative and sits under a scrim and over a
+  solid colour, so nothing is ever measured against the image.
+- **Selected text is inverted deliberately** — near-black on bright cyan,
+  11.4:1. The browser default is a translucent blue that all but vanishes on a
+  dark teal panel, and the text people select here is evidence they are about
+  to paste somewhere.
 - `prefers-reduced-motion` is respected; focus outlines are never removed.
 
 ---
@@ -335,6 +346,13 @@ behaviour that matters is covered end to end instead.
 Hitting a third-party service is always an explicit, user-initiated choice.
 
 ### Fixtures
+
+The offline source injects faults on purpose, so the states that only appear
+when something goes wrong are reviewable without unplugging anything: a slow
+query every 17 requests (which makes a cycle *partial*), and a full feed outage
+every 9th cycle (which produces the error frame, the stale banner and the retry
+copy). Both are named in the message text, so a simulated failure never reads
+as a real one.
 
 [`seed-data.ts`](src/app/data/fixtures/seed-data.ts) ships three watched domains
 and eighteen certificates covering every rule, plus benign certificates (your

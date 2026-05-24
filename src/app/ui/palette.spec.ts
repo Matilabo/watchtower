@@ -104,7 +104,28 @@ describe('palette contrast', () => {
   it('keeps a readable fallback when the background image is missing', () => {
     const backgroundImage = /background-image:[\s\S]*?;/.exec(STYLES)?.[0] ?? '';
     expect(backgroundImage).toContain('linear-gradient');
-    expect(backgroundImage).toContain('background.jpg');
+    expect(backgroundImage).toContain('var(--wt-backdrop)');
+    expect(STYLES).toMatch(/--wt-backdrop:\s*url\("\/background/);
+  });
+
+  it('serves a smaller backdrop to small screens', () => {
+    expect(STYLES).toContain('background-1280.jpg');
+  });
+
+  it('inverts selected text instead of leaving it to the browser default', () => {
+    const selection = /::selection\s*{[^}]*}/.exec(STYLES)?.[0] ?? '';
+    expect(selection).toContain('var(--wt-accent-strong)');
+    expect(selection).toContain('var(--wt-accent-contrast)');
+    expect(
+      contrastRatio(token('wt-accent-contrast'), token('wt-accent-strong')),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('has no text glow anywhere', () => {
+    // A halo is the first thing to blur small type and the first thing to fail
+    // at 200% zoom, so it is banned rather than tuned.
+    const declarations = STYLES.match(/text-shadow:[^;]+;/g) ?? [];
+    expect(declarations.filter((rule) => !/text-shadow:\s*none\s*;/.test(rule))).toEqual([]);
   });
 
   it('respects a reduced-motion preference', () => {

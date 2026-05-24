@@ -6,3 +6,6 @@ playwright-report/
 test-results/
 *.log
 .DS_Store
+
+# The full-resolution upload; public/ holds the optimised, committed versions.
+assets-src/
