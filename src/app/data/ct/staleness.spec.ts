@@ -37,25 +37,30 @@ describe('describeFreshness', () => {
     expect(describeFreshness('not-a-date', BASE, OPTIONS).level).toBe('never');
   });
 
-  it('is fresh inside the first two intervals', () => {
+  it('is fresh inside the first few intervals', () => {
     const freshness = describeFreshness('2026-05-18T12:00:00.000Z', at(30_000), OPTIONS);
     expect(freshness.level).toBe('fresh');
     expect(freshness.stale).toBe(false);
     expect(freshness.label).toBe('Updated 30 seconds ago');
   });
 
-  it('is aging once a poll has been missed', () => {
-    const freshness = describeFreshness('2026-05-18T12:00:00.000Z', at(150_000), OPTIONS);
+  it('rides out a single missed poll without changing what it claims', () => {
+    // One failed cycle at a one-minute interval leaves the data ~2 minutes old.
+    expect(describeFreshness('2026-05-18T12:00:00.000Z', at(120_000), OPTIONS).level).toBe('fresh');
+  });
+
+  it('is aging once several polls have been missed', () => {
+    const freshness = describeFreshness('2026-05-18T12:00:00.000Z', at(200_000), OPTIONS);
     expect(freshness.level).toBe('aging');
     expect(freshness.stale).toBe(false);
     expect(freshness.label).toContain('refresh overdue');
   });
 
-  it('is stale after four intervals, and says so with the age', () => {
-    const freshness = describeFreshness('2026-05-18T12:00:00.000Z', at(300_000), OPTIONS);
+  it('is stale after six intervals, and says so with the age', () => {
+    const freshness = describeFreshness('2026-05-18T12:00:00.000Z', at(420_000), OPTIONS);
     expect(freshness.level).toBe('stale');
     expect(freshness.stale).toBe(true);
-    expect(freshness.label).toBe('Data may be stale, updated 5 minutes ago');
+    expect(freshness.label).toBe('Data may be stale, updated 7 minutes ago');
   });
 
   it('spells the warning out for a screen reader instead of relying on colour', () => {
@@ -66,9 +71,9 @@ describe('describeFreshness', () => {
 
   it('scales its thresholds with the polling interval', () => {
     const slow = { pollIntervalMs: 600_000 };
-    // Five minutes is stale at a one-minute interval and fresh at a ten-minute one.
-    expect(describeFreshness('2026-05-18T12:00:00.000Z', at(300_000), OPTIONS).level).toBe('stale');
-    expect(describeFreshness('2026-05-18T12:00:00.000Z', at(300_000), slow).level).toBe('fresh');
+    // Seven minutes is stale at a one-minute interval and fresh at a ten-minute one.
+    expect(describeFreshness('2026-05-18T12:00:00.000Z', at(420_000), OPTIONS).level).toBe('stale');
+    expect(describeFreshness('2026-05-18T12:00:00.000Z', at(420_000), slow).level).toBe('fresh');
   });
 
   it('accepts custom thresholds', () => {

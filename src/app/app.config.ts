@@ -69,10 +69,13 @@ export function createCtSource(config: WatchtowerConfig): CtSource {
     return new CrtShClient({ timeoutMs: 8_000, maxRetries: 3 });
   }
 
-  // A little latency, an occasional slow query, and a full outage every ninth
-  // cycle, so loading, partial, error and stale states are all visible offline
-  // without any of them dominating the demo.
-  return new FixtureCtSource({ latencyMs: 320, failEvery: 17, failCycleEvery: 9 });
+  // A little latency, a rare slow query, and a rarer full outage, so the
+  // partial, error and stale states are all reachable offline without any of
+  // them becoming the normal state. A cycle issues one query per watched name
+  // plus two fragments, so these divisors are chosen against that rate: at
+  // three watched domains it works out to roughly one partial cycle in six and
+  // one outage every few minutes.
+  return new FixtureCtSource({ latencyMs: 320, failEvery: 53, failCycleEvery: 20 });
 }
 
 export function createGraphQLClient(): GraphQLClient {

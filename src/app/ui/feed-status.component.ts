@@ -7,6 +7,16 @@
  * age is always stated in words, the warning is text rather than a colour, and
  * the whole block is a `role="status"` region so a screen reader user learns
  * that the data went stale without having to go looking.
+ *
+ * Two rules about *checking*, both learned by watching it run:
+ *
+ *  - An automatic check must not look like something the user did. Flipping
+ *    the button to "Checking…" every interval is a control changing under
+ *    their hand for no reason; the button only responds to their own presses.
+ *  - The indicator must never blank out mid-check. Dropping to grey while a
+ *    request is in flight made the light appear to cycle green, blank, orange
+ *    on its own. It now keeps the colour it earned and pulses instead, so the
+ *    colour always means "the state of the data", not "the state of a request".
  */
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
@@ -14,18 +24,37 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { MAX_AUTO_RETRIES, type PollFrame } from '../data/ct/certificate-stream';
 import type { Freshness } from '../data/ct/staleness';
 
+/** "15 seconds", "2 minutes" -- for the cadence sentence. */
+function humanInterval(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 90) return `${seconds} seconds`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
+
 @Component({
   selector: 'wt-feed-status',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="bar" role="status" [attr.data-level]="freshness().level">
-      <span class="dot" aria-hidden="true" [attr.data-state]="indicatorState()"></span>
+      <span
+        class="dot"
+        aria-hidden="true"
+        [attr.data-state]="indicatorState()"
+        [attr.data-checking]="checking() ? '' : null"
+      ></span>
 
       <span class="text">
         <span class="line">
           <strong>{{ sourceName() }}</strong>
           <span class="sep" aria-hidden="true">·</span>
           <span>{{ freshness().label }}</span>
+
+          @if (cadence(); as cadenceText) {
+            <span class="sep" aria-hidden="true">·</span>
+            <span class="cadence">{{ cadenceText }}</span>
+          }
+
           @if (frame()?.partial) {
             <span class="sep" aria-hidden="true">·</span>
             <span class="warn">Some queries failed, results may be incomplete</span>
@@ -42,7 +71,7 @@ import type { Freshness } from '../data/ct/staleness';
         class="refresh"
         [class.wt-quiet]="!paused()"
         [class.wt-primary]="paused()"
-        [disabled]="polling()"
+        [disabled]="manualCheckRunning()"
         (click)="refresh.emit()"
       >
         {{ buttonLabel() }}
@@ -92,6 +121,21 @@ import type { Freshness } from '../data/ct/staleness';
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--wt-danger) 25%, transparent);
       }
 
+      /* A check in progress modulates the light; it never changes its colour. */
+      .dot[data-checking] {
+        animation: wt-pulse 1.1s ease-in-out infinite;
+      }
+
+      @keyframes wt-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.45;
+        }
+      }
+
       .text {
         display: grid;
         gap: 0.1rem;
@@ -105,7 +149,8 @@ import type { Freshness } from '../data/ct/staleness';
         flex-wrap: wrap;
       }
 
-      .sep {
+      .sep,
+      .cadence {
         color: var(--wt-text-muted);
       }
 
@@ -121,7 +166,7 @@ import type { Freshness } from '../data/ct/staleness';
       }
 
       .bar[data-level='stale'] .detail,
-      .bar[data-level='stale'] .line > span:not(.sep) {
+      .bar[data-level='stale'] .line > span:not(.sep):not(.cadence) {
         color: var(--wt-warning);
       }
 
@@ -129,6 +174,7 @@ import type { Freshness } from '../data/ct/staleness';
         margin-left: auto;
         font-size: 0.8125rem;
         padding: 0.3rem 0.7rem;
+        white-space: nowrap;
       }
     `,
   ],
@@ -137,23 +183,48 @@ export class FeedStatusComponent {
   readonly frame = input<PollFrame | null>(null);
   readonly freshness = input.required<Freshness>();
   readonly sourceName = input('Certificate feed');
+  /** Polling interval, so the bar can state the cadence rather than imply it. */
+  readonly intervalMs = input(0);
 
   readonly refresh = output<void>();
 
-  protected readonly polling = computed(() => this.frame()?.status === 'loading');
+  protected readonly checking = computed(() => this.frame()?.status === 'loading');
   protected readonly paused = computed(() => this.frame()?.autoRetryPaused === true);
 
+  /** Only a check the user asked for is allowed to change the button. */
+  protected readonly manualCheckRunning = computed(
+    () => this.checking() && this.frame()?.trigger === 'manual',
+  );
+
   protected readonly buttonLabel = computed(() => {
-    if (this.polling()) return 'Checking…';
+    if (this.manualCheckRunning()) return 'Checking…';
     return this.paused() ? 'Try again' : 'Check now';
   });
 
+  /**
+   * The colour reflects the data, not the request. Keeping it stable while a
+   * check runs is what stopped the light flicking between states on its own.
+   */
   protected readonly indicatorState = computed(() => {
     const frame = this.frame();
     if (frame === null) return 'idle';
-    if (frame.status === 'error') return 'error';
+    if (frame.autoRetryPaused || frame.error !== null) return 'error';
     if (this.freshness().stale || frame.partial) return 'warn';
-    return frame.status === 'loading' ? 'idle' : 'ok';
+    return frame.lastSuccessAt === null ? 'idle' : 'ok';
+  });
+
+  /** Says that checking is automatic, and whether one is happening right now. */
+  protected readonly cadence = computed(() => {
+    const frame = this.frame();
+    if (frame === null) return '';
+
+    if (this.checking()) {
+      return frame.trigger === 'manual' ? 'checking now' : 'checking automatically…';
+    }
+    if (frame.autoRetryPaused) return 'automatic checks paused';
+
+    const interval = this.intervalMs();
+    return interval > 0 ? `checks every ${humanInterval(interval)}` : '';
   });
 
   /** The failure, in the user's terms, or nothing when all is well. */
@@ -161,9 +232,8 @@ export class FeedStatusComponent {
     const frame = this.frame();
     if (frame === null) return 'Connecting to the certificate feed…';
 
-    if (frame.status === 'error' && frame.error !== null) {
-      const attempts =
-        frame.error.attempts > 1 ? ` after ${frame.error.attempts} attempts` : '';
+    if (frame.error !== null) {
+      const attempts = frame.error.attempts > 1 ? ` after ${frame.error.attempts} attempts` : '';
       const base = `${frame.error.message}${attempts}. Showing the last results that came back`;
 
       // Say which it is: still trying, or waiting for you. "Retrying

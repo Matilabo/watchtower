@@ -43,6 +43,15 @@ import { certificateKey } from '../../domain/certificate';
 import { DEFAULT_BACKOFF, backoffDelay, type BackoffOptions } from './backoff';
 import { CtSourceError, type CtErrorKind, type CtQuery, type CtSource } from './ct-source';
 
+/**
+ * What started a cycle.
+ *
+ * The UI needs this to tell an automatic check apart from one the user asked
+ * for: flipping the button to "Checking…" every interval is noise nobody
+ * asked for, while doing nothing when they press it looks broken.
+ */
+export type PollTrigger = 'auto' | 'manual' | 'watchlist';
+
 export interface PollError {
   readonly kind: CtErrorKind;
   readonly message: string;
@@ -62,6 +71,8 @@ export interface PollFrame {
   /** ISO timestamp of the last cycle that produced data; drives staleness. */
   readonly lastSuccessAt: string | null;
   readonly polledAt: string;
+  /** What started this cycle. */
+  readonly trigger: PollTrigger;
   readonly error: PollError | null;
   /** Some queries failed but others succeeded: the set may be incomplete. */
   readonly partial: boolean;
@@ -179,7 +190,7 @@ async function fetchAll(
 }
 
 type CycleEvent =
-  | { readonly type: 'loading' }
+  | { readonly type: 'loading'; readonly trigger: PollTrigger }
   | { readonly type: 'result'; readonly outcome: FetchOutcome }
   | {
       readonly type: 'error';
@@ -210,6 +221,7 @@ function reduce(state: StreamState, event: CycleEvent, now: () => number): Strea
           ...state.frame,
           status: 'loading',
           newCertificates: [],
+          trigger: event.trigger,
           polledAt,
         },
       };
@@ -255,6 +267,7 @@ function reduce(state: StreamState, event: CycleEvent, now: () => number): Strea
           error: null,
           partial: event.outcome.partial,
           sourceName: state.frame.sourceName,
+          trigger: state.frame.trigger,
           consecutiveFailures: 0,
           autoRetryPaused: false,
         },
@@ -287,7 +300,7 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
   // Whether the interval is still allowed to fire. Kept as closure state
   // rather than a signal or a Subject because nothing outside this stream may
   // write it: it is decided entirely by the outcomes flowing through here.
-  const control = { consecutiveFailures: 0, paused: false };
+  const control = { consecutiveFailures: 0, paused: false, trigger: 'auto' as PollTrigger };
 
   const resume = (): void => {
     control.consecutiveFailures = 0;
@@ -313,6 +326,7 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
       error: null,
       partial: false,
       sourceName: source.name,
+      trigger: 'auto',
       consecutiveFailures: 0,
       autoRetryPaused: false,
     },
@@ -320,23 +334,40 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
 
   const ticks$ = (scheduler ? timer(0, intervalMs, scheduler) : timer(0, intervalMs)).pipe(
     filter(() => !control.paused),
+    tap(() => {
+      control.trigger = 'auto';
+    }),
   );
 
   // Asking for data by hand is also an instruction to start trying again.
-  const manual$ = refresh$ === undefined ? undefined : refresh$.pipe(tap(resume));
+  const manual$ =
+    refresh$ === undefined
+      ? undefined
+      : refresh$.pipe(
+          tap(() => {
+            resume();
+            control.trigger = 'manual';
+          }),
+        );
   const triggers$ = manual$ === undefined ? ticks$ : merge(ticks$, manual$);
 
   // Changing the watchlist is user intent too, and it must start a cycle
   // immediately rather than waiting up to a full interval -- hence
   // combineLatest rather than withLatestFrom.
-  const cycles$ = combineLatest([queries$.pipe(tap(resume)), triggers$]).pipe(
-    map(([queries]) => queries),
-  );
+  const cycles$ = combineLatest([
+    queries$.pipe(
+      tap(() => {
+        resume();
+        control.trigger = 'watchlist';
+      }),
+    ),
+    triggers$,
+  ]).pipe(map(([queries]) => queries));
 
   const frames$ = cycles$.pipe(
     switchMap((queries) =>
       concat(
-        of<CycleEvent>({ type: 'loading' }),
+        of<CycleEvent>({ type: 'loading', trigger: control.trigger }),
         defer(() => {
           onCycleStart?.();
           return fromAbortable((signal) => fetchAll(source, queries, signal));
@@ -367,6 +398,7 @@ export function createCertificateStream(options: CertificateStreamOptions): Cert
         a.partial === b.partial &&
         a.error?.message === b.error?.message &&
         a.autoRetryPaused === b.autoRetryPaused &&
+        a.trigger === b.trigger &&
         a.consecutiveFailures === b.consecutiveFailures &&
         a.lastSuccessAt === b.lastSuccessAt,
     ),

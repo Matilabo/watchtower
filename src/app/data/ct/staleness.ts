@@ -34,8 +34,17 @@ export interface FreshnessOptions {
   readonly staleAfterIntervals?: number;
 }
 
-const DEFAULT_AGING_INTERVALS = 2;
-const DEFAULT_STALE_INTERVALS = 4;
+/*
+ * Thresholds in multiples of the polling interval.
+ *
+ * A single missed beat is not news: with the old 2x/4x the indicator went
+ * amber every time one cycle failed and green again on the next, which read as
+ * the light changing on its own. Three intervals means two consecutive misses
+ * before anything is claimed, which is the point at which the data on screen
+ * really is behind.
+ */
+const DEFAULT_AGING_INTERVALS = 3;
+const DEFAULT_STALE_INTERVALS = 6;
 
 /** Rounded, human-facing age. Deliberately coarse: precision here is noise. */
 export function formatAge(ageMs: number): string {
