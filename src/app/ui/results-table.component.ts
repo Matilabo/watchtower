@@ -103,9 +103,9 @@ import { AlertRowComponent } from './alert-row.component';
             <tr>
               <th scope="col">Risk</th>
               <th scope="col">Certificate name</th>
-              <th scope="col">Resembles</th>
-              <th scope="col">Issuer</th>
-              <th scope="col">Logged</th>
+              <th scope="col" class="wt-col-resembles">Resembles</th>
+              <th scope="col" class="wt-col-issuer">Issuer</th>
+              <th scope="col" class="wt-col-logged">Logged</th>
               <th scope="col">Triage</th>
               <th scope="col"><span class="wt-visually-hidden">Actions</span></th>
             </tr>

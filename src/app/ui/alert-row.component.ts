@@ -48,13 +48,13 @@ import { TriageControlsComponent } from './triage-controls.component';
       <span class="reason">{{ topReason() }}</span>
     </th>
 
-    <td class="watched wt-mono">{{ alert().watchedDomain }}</td>
+    <td class="watched wt-mono wt-col-resembles">{{ alert().watchedDomain }}</td>
 
-    <td class="issuer">
+    <td class="issuer wt-col-issuer">
       <span class="truncate" [title]="alert().certificate.issuer">{{ issuerName() }}</span>
     </td>
 
-    <td class="seen">
+    <td class="seen wt-col-logged">
       <time [attr.datetime]="alert().certificate.loggedAt">{{ loggedAt() }}</time>
     </td>
 

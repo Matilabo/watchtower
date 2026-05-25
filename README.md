@@ -271,6 +271,13 @@ crt.sh 502'd once is useless, so the last good certificates stay on screen, the
 error is described in the status bar, and `lastSuccessAt` stops advancing — which
 is what makes the staleness indicator honest.
 
+The status bar distinguishes a check the user asked for from one the interval
+started: an automatic check pulses the indicator and says "checking
+automatically…", while the button only ever responds to presses. The indicator
+also keeps the colour it earned while a request is in flight — dropping it to
+grey mid-check made the light appear to cycle green, blank, amber on its own,
+which is a status bar reporting on itself rather than on the data.
+
 Automatic retries are capped at **five consecutive failures**. Past that the
 interval stands down and the status bar says so, because hammering a feed that
 is genuinely down helps nobody and "retrying automatically" is a lie once you
@@ -283,6 +290,20 @@ are not failures: they are reported as incomplete and the data is kept.
 re-render) and exposing `newCertificates$` separately for the live region.
 
 ---
+
+## Layout
+
+The watchlist is a band across the top, not a column beside the results. As a
+column it took 20rem the table needed, which forced the table into horizontal
+scrolling at ordinary laptop widths — and a table you have to scroll sideways is
+a table you cannot scan. The table now fits without a scrollbar down to 900px,
+shedding the issuer and logged-at columns below 1150px and the watched-domain
+column below 860px; all three are still in the detail card.
+
+Because every line the band occupies is a row of results nobody sees, its parts
+are ranked by how often they are used: what is watched stays visible, the form
+to add something is one click away, and with nothing watched yet the form opens
+because it is then the only thing worth doing.
 
 ## Accessibility
 

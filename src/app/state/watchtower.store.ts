@@ -122,6 +122,7 @@ export class WatchtowerStore {
   readonly filter = this.filterSignal.asReadonly();
   readonly sourceName = computed(() => this.frameSignal()?.sourceName ?? 'Starting up');
   readonly isLiveSource = this.config.liveSource;
+  readonly pollIntervalMs = this.config.pollIntervalMs;
 
   readonly alerts = computed(() => {
     const state = this.filterSignal();

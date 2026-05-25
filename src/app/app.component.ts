@@ -89,25 +89,25 @@ const DETAIL_PANEL_ID = 'alert-detail';
 
       @if (!store.isLiveSource) {
         <p class="banner banner--info">
-          Running on bundled fixtures, so this works with no network and no API keys.
-          They inject an occasional timeout on purpose, so the retry and stale-data
-          states stay visible offline. Add <code>?live=1</code> to poll crt.sh instead.
+          Bundled fixtures — no network, no API keys, with occasional timeouts injected
+          on purpose so the retry and stale-data states stay visible. Add
+          <code>?live=1</code> to poll crt.sh.
         </p>
       }
 
-      <div class="layout">
-        <aside class="wt-panel sidebar" aria-labelledby="watchlist-heading">
-          <h2 id="watchlist-heading" class="wt-visually-hidden">Watchlist</h2>
-          <wt-watchlist-panel
-            [entries]="store.watchlist()"
-            [alertCounts]="alertCounts()"
-            [error]="store.formError()"
-            [busy]="store.adding()"
-            (add)="onAdd($event)"
-            (remove)="onRemove($event)"
-          />
-        </aside>
+      <section class="wt-panel watchlist" aria-labelledby="watchlist-heading">
+        <h2 id="watchlist-heading" class="wt-visually-hidden">Watchlist</h2>
+        <wt-watchlist-panel
+          [entries]="store.watchlist()"
+          [alertCounts]="alertCounts()"
+          [error]="store.formError()"
+          [busy]="store.adding()"
+          (add)="onAdd($event)"
+          (remove)="onRemove($event)"
+        />
+      </section>
 
+      <div class="workspace">
         <main id="results" class="wt-panel results" tabindex="-1" aria-labelledby="results-heading">
           <h2 id="results-heading" class="wt-visually-hidden">Certificate matches</h2>
 
@@ -115,6 +115,7 @@ const DETAIL_PANEL_ID = 'alert-detail';
             [frame]="store.frame()"
             [freshness]="store.freshness()"
             [sourceName]="store.sourceName()"
+            [intervalMs]="store.pollIntervalMs"
             (refresh)="store.refresh()"
           />
 
@@ -174,11 +175,11 @@ const DETAIL_PANEL_ID = 'alert-detail';
   styles: [
     `
       .page {
-        max-width: 1500px;
+        max-width: 1600px;
         margin: 0 auto;
-        padding: 1.25rem 1.25rem 3rem;
+        padding: 1rem 1.25rem 3rem;
         display: grid;
-        gap: 1rem;
+        gap: 0.75rem;
       }
 
       .masthead {
@@ -186,7 +187,7 @@ const DETAIL_PANEL_ID = 'alert-detail';
         align-items: center;
         gap: 1.5rem;
         flex-wrap: wrap;
-        padding: 0.5rem 0.25rem;
+        padding: 0.25rem 0.25rem 0;
       }
 
       .brand {
@@ -226,7 +227,7 @@ const DETAIL_PANEL_ID = 'alert-detail';
 
       .stats dd {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: 1.3rem;
         font-weight: 700;
         font-family: var(--wt-mono);
       }
@@ -251,10 +252,22 @@ const DETAIL_PANEL_ID = 'alert-detail';
         border-radius: 4px;
       }
 
-      .layout {
+      /*
+       * The watchlist is a band across the top rather than a column.
+       *
+       * As a column it stole 20rem from the results table, which pushed the
+       * table into horizontal scrolling on ordinary laptop widths -- and a
+       * table you have to scroll sideways is a table you cannot scan. The
+       * watchlist is short, edited rarely and reads fine as a horizontal strip.
+       */
+      .watchlist {
+        padding: 0;
+      }
+
+      .workspace {
         display: grid;
         gap: 1rem;
-        grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr);
         align-items: start;
       }
 
@@ -268,7 +281,7 @@ const DETAIL_PANEL_ID = 'alert-detail';
       }
 
       .detail {
-        grid-column: 1 / -1;
+        min-width: 0;
       }
 
       .detail-empty {
@@ -299,13 +312,16 @@ const DETAIL_PANEL_ID = 'alert-detail';
         margin: 0;
       }
 
-      @media (min-width: 1200px) {
-        .layout {
-          grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr) minmax(20rem, 26rem);
+      /*
+       * Only put the detail card beside the table when there is genuinely room
+       * for both; below this it goes underneath, at full width.
+       */
+      @media (min-width: 1500px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr) minmax(21rem, 26rem);
         }
 
         .detail {
-          grid-column: auto;
           position: sticky;
           top: 1rem;
           max-height: calc(100vh - 2rem);
@@ -317,10 +333,6 @@ const DETAIL_PANEL_ID = 'alert-detail';
         .stats {
           gap: 1rem;
           margin-left: 0;
-        }
-
-        .layout {
-          grid-template-columns: minmax(0, 1fr);
         }
       }
     `,

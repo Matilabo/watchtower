@@ -18,6 +18,16 @@ function row(page: Page, name: string) {
   return page.locator('tbody tr').filter({ hasText: name });
 }
 
+/**
+ * The add form is collapsed once anything is watched, so the band across the
+ * top stays short. Opening it is part of the journey.
+ */
+async function openAddForm(page: Page): Promise<void> {
+  const toggle = page.getByRole('button', { name: 'Add domain' });
+  if (await toggle.isVisible()) await toggle.click();
+  await expect(page.getByLabel('Domain', { exact: true })).toBeVisible();
+}
+
 async function waitForFirstPoll(page: Page): Promise<void> {
   await expect(page.getByRole('status').first()).toContainText(/Updated|just now/, {
     timeout: 20_000,
@@ -34,12 +44,15 @@ test.beforeEach(async ({ page }) => {
 
 test('add a watchlist entry, get a match, triage it, and keep the verdict', async ({ page }) => {
   // --- add ---------------------------------------------------------------
-  await page.getByLabel('Domain').fill(WATCHED_DOMAIN);
+  await openAddForm(page);
+  await page.getByLabel('Domain', { exact: true }).fill(WATCHED_DOMAIN);
   await page.getByRole('button', { name: 'Watch domain' }).click();
 
   await expect(page.getByRole('listitem').filter({ hasText: WATCHED_DOMAIN })).toBeVisible();
-  // The field is cleared only once the entry was actually accepted.
-  await expect(page.getByLabel('Domain')).toHaveValue('');
+  // The form closes itself once the entry was accepted, which is also how the
+  // band stays out of the way of the results.
+  await expect(page.getByLabel('Domain', { exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Add domain' })).toBeVisible();
 
   // --- poll returns a match ----------------------------------------------
   const match = row(page, EXPECTED_MATCH);
@@ -136,7 +149,8 @@ test.describe('accessibility', () => {
   });
 
   test('reports invalid input on the field that caused it', async ({ page }) => {
-    const field = page.getByLabel('Domain');
+    await openAddForm(page);
+    const field = page.getByLabel('Domain', { exact: true });
     await field.fill('not a domain');
     await page.getByRole('button', { name: 'Watch domain' }).click();
 
@@ -158,9 +172,39 @@ test('says how old the data is, and never claims data it does not have', async (
   const status = page.getByRole('status').first();
   await expect(status).toContainText('Offline fixtures');
   await expect(status).toContainText(/Updated/);
+  // The cadence is stated rather than implied, so an unattended check is not
+  // mistaken for something the user did.
+  await expect(status).toContainText(/checks every|checking/);
 
   await page.getByRole('button', { name: /Check now/ }).click();
   await expect(status).toContainText(/Updated/, { timeout: 20_000 });
+});
+
+test('does not touch the refresh button for checks the user did not ask for', async ({
+  page,
+}) => {
+  const button = page.getByRole('button', { name: /Check now|Checking|Try again/ });
+  await expect(button).toHaveText('Check now');
+
+  // Several automatic cycles go by (the suite runs at a 1.5s interval).
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(1_600);
+    await expect(button).toHaveText('Check now');
+  }
+});
+
+test('the results table never needs horizontal scrolling at laptop width', async ({ page }) => {
+  for (const width of [1440, 1280, 1024, 900]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const scroller = document.querySelector('.scroll');
+          return scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
+        }),
+      )
+      .toBe(0);
+  }
 });
 
 test('does not alert on the user own certificates', async ({ page }) => {
