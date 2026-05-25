@@ -89,7 +89,7 @@ const DETAIL_PANEL_ID = 'alert-detail';
 
       @if (!store.isLiveSource) {
         <p class="banner banner--info">
-          Bundled fixtures — no network, no API keys, with occasional timeouts injected
+          Bundled fixtures: no network, no API keys, with occasional timeouts injected
           on purpose so the retry and stale-data states stay visible. Add
           <code>?live=1</code> to poll crt.sh.
         </p>

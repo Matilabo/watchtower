@@ -60,7 +60,7 @@ import { TriageControlsComponent } from './triage-controls.component';
         </div>
         <div>
           <dt>Matched label</dt>
-          <dd class="wt-mono">{{ alert().assessment.matchedLabel ?? '—' }}</dd>
+          <dd class="wt-mono">{{ alert().assessment.matchedLabel || 'None' }}</dd>
         </div>
         <div>
           <dt>Issuer</dt>
@@ -68,7 +68,7 @@ import { TriageControlsComponent } from './triage-controls.component';
         </div>
         <div>
           <dt>Serial</dt>
-          <dd class="wt-mono">{{ alert().certificate.serialNumber || '—' }}</dd>
+          <dd class="wt-mono">{{ alert().certificate.serialNumber || 'None' }}</dd>
         </div>
         <div>
           <dt>Logged</dt>

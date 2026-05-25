@@ -17,7 +17,7 @@ ships with fixture data and an in-process API.
 
 Every publicly trusted TLS certificate is published to public, append-only
 certificate transparency logs within hours of being issued. Attackers use TLS
-too — a phishing page without a padlock converts badly — so they show up in
+too, since a phishing page without a padlock converts badly, so they show up in
 those logs, usually days before the campaign starts. That gap is the whole
 opportunity: `n0rthwindbank.com` getting a certificate on Tuesday is a warning
 that something will be mailed to your customers on Friday.
@@ -88,7 +88,7 @@ we take it as it comes:
 
 - It is *immutable public record*. A logged certificate never changes, so there
   is nothing to mutate, nothing to invalidate, and no consistency problem.
-- The shape is fixed and flat. There is no graph to traverse — a certificate has
+- The shape is fixed and flat. There is no graph to traverse: a certificate has
   names, an issuer and dates. Nobody ever needs "the issuer's other certificates
   from Tuesday" in the same round trip.
 - **We do not own the endpoint.** crt.sh is a free public service with no SLA,
@@ -113,7 +113,7 @@ we take it as it comes:
   with typed inputs and a single result type beat inventing REST endpoints for
   "set triage state and append to history atomically".
 - Expected failures travel as data. `addWatchlistEntry` returning a `UserError`
-  with a `field` is how a typo renders next to the input that caused it — that
+  with a `field` is how a typo renders next to the input that caused it. That
   is a domain outcome, not an HTTP 400.
 
 Put briefly: **REST for the firehose we do not own, GraphQL for the small graph
@@ -123,20 +123,20 @@ be swapped at the composition root without touching a component.
 ### What crt.sh can and cannot do for us
 
 crt.sh matches substrings, not similarity. A single `%northwindbank%` query
-finds combosquats, hyphenations, doublings and TLD swaps — but never a
+finds combosquats, hyphenations, doublings and TLD swaps, but never a
 homoglyph, because `n0rthwindbank` does not contain `northwindbank`.
 
 The fix is cheap: **any single-character substitution leaves one half of the
 name intact**, so the client also queries both halves. This works on
 internationalised names too, because an A-label keeps its untouched ASCII in
-order — a Cyrillic-`а` variant of `northwindbank.com` is logged as
+order: a Cyrillic-`а` variant of `northwindbank.com` is logged as
 `xn--northwindbnk-69j.com`, which still contains `northwi`. Three queries per
 watched domain, and homoglyphs become findable through a substring search.
 
 What this deliberately does **not** catch is a name with substitutions in *both*
 halves. That needs the full CT firehose (certstream) rather than a search
-endpoint. The bundled fixture source simulates such a feed — it returns
-everything and lets the scorer decide — so the offline demo shows what the
+endpoint. The bundled fixture source simulates such a feed: it returns
+everything and lets the scorer decide, so the offline demo shows what the
 scorer can do. The UI always names the active source so the difference is never
 hidden.
 
@@ -152,7 +152,7 @@ transposition, omission, insertion, doubling, hyphenation, TLD swap,
 combosquat, small edit distance). `modifier` rules only amplify something
 already suspicious (punycode, mixed script, lure keywords like `login`, abuse-heavy
 TLDs). `suppressor` means it is your own certificate. Without that split,
-"contains `login`" and "uses `.zip`" would light up half the firehose —
+"contains `login`" and "uses `.zip`" would light up half the firehose  
 `login-secure.zip` scores **0** against `northwindbank.com`, and a test pins it.
 
 **2. Weights combine with a noisy-OR, not a sum.**
@@ -218,8 +218,8 @@ reducers, selectors and effects would mean writing four files to express "set
 this list", and would move logic *away* from the pure functions where it is
 currently unit tested.
 
-The parts that genuinely deserve rigour — scoring, triage transitions, ordering,
-the certificate-to-alert join — are pure functions in `domain/`, tested without
+The parts that genuinely deserve rigour (scoring, triage transitions, ordering,
+the certificate-to-alert join) are pure functions in `domain/`, tested without
 a framework. The service is the thin, boring part, and it should stay that way.
 If this grew multi-user collaboration or optimistic offline sync, that judgement
 would change; it is a judgement about *this* state, not a position on stores.
@@ -231,7 +231,7 @@ would change; it is a judgement about *this* state, not a position on stores.
 composed into two structurally unrelated hosts via `hostDirectives`:
 
 ```ts
-// alert-row.component.ts — the component *is* the <tr>
+// alert-row.component.ts: the component *is* the <tr>
 @Component({
   selector: 'tr[wtAlertRow]',
   hostDirectives: [
@@ -239,7 +239,7 @@ composed into two structurally unrelated hosts via `hostDirectives`:
   ],
 })
 
-// alert-detail.component.ts — a card, sharing no structure with a table row
+// alert-detail.component.ts: a card, sharing no structure with a table row
 @Component({
   selector: 'wt-alert-detail',
   hostDirectives: [
@@ -252,7 +252,7 @@ A table row and a detail card have no structure in common, which is exactly why
 composition beats the alternatives: no shared base class (they extend nothing
 alike), no wrapper element that exists only to hold a class, no duplicated host
 bindings that drift. The hosts declare *what they are*; the directive decides
-*what risk looks like* — accent colour, border weight, `data-risk-level` — for
+*what risk looks like*: accent colour, border weight and `data-risk-level`, for
 both at once.
 
 The directive is presentation only. Risk reaches assistive technology as text
@@ -260,7 +260,7 @@ from the badge, never as a CSS custom property.
 
 ### RxJS polling
 
-[`certificate-stream.ts`](src/app/data/ct/certificate-stream.ts) — `interval` +
+[`certificate-stream.ts`](src/app/data/ct/certificate-stream.ts) uses `interval` +
 `switchMap`, and `switchMap` is load-bearing rather than decorative: it cancels
 the in-flight request on the next tick *and* when the watchlist changes, wired
 through to `AbortController`. A slow response can never land after the query
@@ -268,13 +268,13 @@ that superseded it and repopulate the table for a domain you just removed.
 
 Failure is a *frame*, not a terminated stream. A feed that stops polling because
 crt.sh 502'd once is useless, so the last good certificates stay on screen, the
-error is described in the status bar, and `lastSuccessAt` stops advancing — which
+error is described in the status bar, and `lastSuccessAt` stops advancing, which
 is what makes the staleness indicator honest.
 
 The status bar distinguishes a check the user asked for from one the interval
 started: an automatic check pulses the indicator and says "checking
 automatically…", while the button only ever responds to presses. The indicator
-also keeps the colour it earned while a request is in flight — dropping it to
+also keeps the colour it earned while a request is in flight. Dropping it to
 grey mid-check made the light appear to cycle green, blank, amber on its own,
 which is a status bar reporting on itself rather than on the data.
 
@@ -282,7 +282,7 @@ Automatic retries are capped at **five consecutive failures**. Past that the
 interval stands down and the status bar says so, because hammering a feed that
 is genuinely down helps nobody and "retrying automatically" is a lie once you
 have decided to stop. A manual *Try again*, or any watchlist change, resumes it
-and resets the count. Partial cycles — some queries failed, others returned —
+and resets the count. Partial cycles (some queries failed, others returned)  
 are not failures: they are reported as incomplete and the data is kept.
 
 "Only genuinely new certificates emit" is implemented by keeping the
@@ -295,7 +295,7 @@ re-render) and exposing `newCertificates$` separately for the live region.
 
 The watchlist is a band across the top, not a column beside the results. As a
 column it took 20rem the table needed, which forced the table into horizontal
-scrolling at ordinary laptop widths — and a table you have to scroll sideways is
+scrolling at ordinary laptop widths, and a table you have to scroll sideways is
 a table you cannot scan. The table now fits without a scrollbar down to 900px,
 shedding the issuer and logged-at columns below 1150px and the watched-domain
 column below 860px; all three are still in the detail card.
@@ -317,7 +317,7 @@ not be disrupted when new certificates arrive.**
 - **Order is stable.** Applying fresh data never re-ranks a list already on
   screen (`preserveOrder`); marking row 3 benign does not make rows 4–12 jump.
   Triage updates a row in place.
-- **One polite live region**, carrying a sentence — "3 new certificates matched
+- **One polite live region**, carrying a sentence, such as "3 new certificates matched
   your watchlist. Highest risk: critical." Announcing the table itself on every
   poll would be unusable; announcing nothing would hide the point of the app.
 - **Focus is moved exactly once**, when the user opens a row, to the detail
@@ -333,7 +333,7 @@ not be disrupted when new certificates arrive.**
   the real stylesheet and fails the build if any token pair drops below WCAG AA.
   The background photograph is decorative and sits under a scrim and over a
   solid colour, so nothing is ever measured against the image.
-- **Selected text is inverted deliberately** — near-black on bright cyan,
+- **Selected text is inverted deliberately**   near-black on bright cyan,
   11.4:1. The browser default is a translucent blue that all but vanishes on a
   dark teal panel, and the text people select here is evidence they are about
   to paste somewhere.
@@ -351,9 +351,9 @@ npm run e2e        # Playwright: the add → match → triage → persist journe
 npm run typecheck  # tsc --noEmit, strict
 ```
 
-Unit tests cover the core logic — the scorer, punycode/IDN handling, homoglyph
+Unit tests cover the core logic (the scorer, punycode/IDN handling, homoglyph
 folding, typosquat detectors, retry/backoff, the polling stream, the store and
-the GraphQL layer — and deliberately not trivial components; the component
+the GraphQL layer) and deliberately not trivial components; the component
 behaviour that matters is covered end to end instead.
 
 ### URL switches
@@ -383,7 +383,7 @@ describes attack *shapes*, and naming a real bank would be both misleading and
 unkind to that bank. Internationalised names are stored as A-labels exactly as a
 CT log holds them, so the decode path stays exercised offline.
 
-Triage state persists in `localStorage`, guarded on every access — private
+Triage state persists in `localStorage`, guarded on every access: private
 browsing, quota limits and absent storage all degrade to memory rather than
 taking the app down.
 

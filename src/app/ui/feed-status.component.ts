@@ -240,7 +240,7 @@ export class FeedStatusComponent {
       // automatically" while nothing is being retried is the kind of small lie
       // that makes people stop believing the rest of the status bar.
       return frame.autoRetryPaused
-        ? `${base}. Automatic checks stopped after ${frame.consecutiveFailures} failed attempts — choose “Try again” to resume.`
+        ? `${base}. Automatic checks stopped after ${frame.consecutiveFailures} failed attempts. Choose “Try again” to resume.`
         : `${base}; retrying automatically (attempt ${frame.consecutiveFailures} of ${MAX_AUTO_RETRIES}).`;
     }
 

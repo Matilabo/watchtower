@@ -18,7 +18,7 @@ downloads the large one.
 ### Regenerating them
 
 Put the full-resolution original at `assets-src/background-original.jpg` (that
-folder is git-ignored — the source file is several megabytes and only the
+folder is git-ignored, since the source file is several megabytes and only the
 derivatives need to ship), then:
 
 ```bash
@@ -34,7 +34,7 @@ rather than competing with the interface.
 
 Prefer something dark, wide and quiet. The layer stack in `src/styles.css`
 scrims the image from 62% at the masthead to 94% under the content, so a busy
-or bright picture costs legibility without adding information — the current one
+or bright picture costs legibility without adding information. The current one
 has a mean luminance of 23/255 and leaves body text at roughly 6.5:1 even over
 its brightest pixel.
 
