@@ -105,11 +105,18 @@ describe('palette contrast', () => {
     const backgroundImage = /background-image:[\s\S]*?;/.exec(STYLES)?.[0] ?? '';
     expect(backgroundImage).toContain('linear-gradient');
     expect(backgroundImage).toContain('var(--wt-backdrop)');
-    expect(STYLES).toMatch(/--wt-backdrop:\s*url\("\/background/);
+    expect(STYLES).toMatch(/--wt-backdrop:\s*url\("\.\/assets\/background/);
   });
 
   it('serves a smaller backdrop to small screens', () => {
     expect(STYLES).toContain('background-1280.jpg');
+  });
+
+  it('references the backdrop relatively, so it survives being served from a subpath', () => {
+    // An absolute "/background.jpg" resolves at the domain root, so it 404s on
+    // a GitHub Pages project site, which is served from /<repo>/.
+    const urls = STYLES.match(/url\("[^"]+"\)/g) ?? [];
+    expect(urls.filter((url) => url.startsWith('url("/'))).toEqual([]);
   });
 
   it('inverts selected text instead of leaving it to the browser default', () => {

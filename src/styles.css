@@ -67,14 +67,20 @@ body {
  * Two widths of the same photograph, picked by media query so a phone does not
  * download a 2560px image. The URL lives in a custom property so the gradient
  * stack below is written once.
+ *
+ * These are bundler assets rather than files copied verbatim from public/, and
+ * that is deliberate: the bundler emits them with a content hash and rewrites
+ * the URL relative to the stylesheet. An absolute "/background.jpg" only ever
+ * resolves at a domain root, so it 404s the moment the app is served from a
+ * subpath, which is exactly how GitHub Pages serves a project site.
  */
 :root {
-  --wt-backdrop: url("/background.jpg");
+  --wt-backdrop: url("./assets/background.jpg");
 }
 
 @media (max-width: 900px) {
   :root {
-    --wt-backdrop: url("/background-1280.jpg");
+    --wt-backdrop: url("./assets/background-1280.jpg");
   }
 }
 

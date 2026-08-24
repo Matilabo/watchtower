@@ -17,7 +17,7 @@
             "browser": "src/main.ts",
             "polyfills": [],
             "tsConfig": "tsconfig.app.json",
-            "assets": [{ "glob": "**/*", "input": "public" }],
+            "assets": [{ "glob": "**/*", "input": "public", "ignore": ["README.md"] }],
             "styles": ["src/styles.css"]
           },
           "configurations": {
