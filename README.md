@@ -396,6 +396,55 @@ loading.
 
 ---
 
+## Hosting it on GitHub Pages
+
+Nothing in the app needs a server. The certificate feed is bundled fixtures,
+the API is a GraphQL server that executes inside the page, and triage state
+lives in `localStorage`, so the production build is already a static site: one
+HTML file, one JS bundle, one stylesheet and two images. There is no router, so
+there are no deep links to rewrite either.
+
+Two things did have to change for a *project* site, which is served from
+`https://<owner>.github.io/<repo>/` rather than from a domain root:
+
+- **The base href.** `<base href="/">` makes every relative URL in the document
+  resolve at the root, so the bundle 404s under a subpath. The build takes
+  `--base-href /<repo>/`.
+- **The backdrop URLs.** They were `url("/background.jpg")`, absolute, pointing
+  at the domain root. The images moved from `public/` (copied verbatim, so only
+  addressable absolutely) to `src/assets/` (bundler assets, emitted with a
+  content hash and rewritten relative to the stylesheet). They now resolve under
+  any base path, and get cache-busting for free. `palette.spec.ts` fails on any
+  absolute `url("/…")` in the stylesheet so this cannot regress.
+
+```bash
+npm run build:pages      # base href /watchtower/, output in dist/watchtower/browser
+```
+
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) does it on every
+push: tests, typecheck, build with the base href derived from the repository
+name, then publish. Enable it once under **Settings → Pages → Build and
+deployment → Source: GitHub Actions**. No `gh-pages` branch, no build output
+committed.
+
+### What the hosted version cannot do
+
+`?live=1` will not work in any browser, hosted or local. crt.sh serves no
+`Access-Control-Allow-Origin` header, so the request is blocked before it
+reaches the app:
+
+```
+fetch('https://crt.sh/?q=%25example.com%25&output=json')
+  -> TypeError: Failed to fetch
+```
+
+That is a property of crt.sh, not of the deployment: live mode needs a
+same-origin proxy in front of it. The app already treats it as an ordinary
+network failure (five backed-off retries, then it stands down and says so), and
+in live mode the UI names the actual cause rather than letting you conclude the
+deployment is broken. The bundled fixtures need no network, which is what the
+hosted demo runs on.
+
 ## Where this would go next
 
 - **certstream instead of crt.sh** for the coverage gap described above. The

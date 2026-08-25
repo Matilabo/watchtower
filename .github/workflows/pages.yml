@@ -1,0 +1,73 @@
+# Builds the app and publishes it to GitHub Pages.
+#
+# Nothing about the app needs a server: the certificate feed is bundled
+# fixtures, the API is a GraphQL server that runs in the page, and triage state
+# lives in localStorage. So the deployable artefact is the ordinary production
+# build, with one adjustment: a project site is served from /<repo>/, not from
+# the domain root, so the base href has to say so.
+#
+# Enable it once under Settings -> Pages -> Build and deployment -> Source:
+# "GitHub Actions". No branch to maintain, no build output committed.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, feat/github-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deployment finish rather than cancelling it half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The scoring rules are the part worth being sure about, and a broken
+      # build is better caught here than served.
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        # A project site lives at https://<owner>.github.io/<repo>/, so the base
+        # href is derived from the repository rather than hard-coded.
+        run: npx ng build --base-href "/${GITHUB_REPOSITORY#*/}/"
+
+      # The app has no router, so this is only for someone who types a path
+      # that does not exist: Pages serves 404.html, which boots the app instead
+      # of showing GitHub's error page.
+      - name: Add SPA fallback
+        run: cp dist/watchtower/browser/index.html dist/watchtower/browser/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/watchtower/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -10,6 +10,7 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
+    "build:pages": "ng build --base-href /watchtower/",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
