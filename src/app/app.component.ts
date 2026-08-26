@@ -87,6 +87,14 @@ const DETAIL_PANEL_ID = 'alert-detail';
         </p>
       }
 
+      @if (store.isLiveSource && liveSourceBlocked()) {
+        <p class="banner" role="alert">
+          <span aria-hidden="true">⚠</span> crt.sh sends no CORS headers, so a browser
+          cannot call it directly from this origin. Live mode needs a same-origin proxy
+          in front of it; the bundled fixtures need no network at all.
+        </p>
+      }
+
       @if (!store.isLiveSource) {
         <p class="banner banner--info">
           Bundled fixtures: no network, no API keys, with occasional timeouts injected
@@ -356,6 +364,16 @@ export class AppComponent {
     }
     return counts;
   });
+
+  /**
+   * Live mode failing at the network layer, from a browser, is almost always
+   * the same thing: crt.sh answers without CORS headers, so the request never
+   * reaches our code. Saying so beats letting someone conclude the deployment
+   * is broken.
+   */
+  protected readonly liveSourceBlocked = computed(
+    () => this.store.frame()?.error?.kind === 'network',
+  );
 
   protected readonly busyIds = computed(() => {
     const ids = new Set<string>();
